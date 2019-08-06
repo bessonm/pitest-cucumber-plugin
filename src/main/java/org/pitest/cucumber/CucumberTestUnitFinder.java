@@ -1,9 +1,12 @@
 package org.pitest.cucumber;
 
+import cucumber.api.SnippetType;
 import io.cucumber.core.options.CucumberOptionsAnnotationParser;
 import io.cucumber.core.options.RuntimeOptions;
 import io.cucumber.junit.Cucumber;
+import io.cucumber.junit.CucumberOptions;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import org.junit.runner.RunWith;
@@ -33,33 +36,173 @@ import gherkin.events.PickleEvent;
 public class CucumberTestUnitFinder implements TestUnitFinder {
 
     public List<TestUnit> findTestUnits(Class<?> junitTestClass) {
+
+        if (hasACucumberAnnotation(junitTestClass)) {
+
+            if (hasDeprecatedAnnotation(junitTestClass)) {
+                return deprecated(junitTestClass);
+            }
+
+            if (hasNewAnnotation(junitTestClass)) {
+                return newAnnotation(junitTestClass);
+            }
+
+        }
+
+        return Collections.emptyList(); // todo - throw exception or keep running smoothly ?
+    }
+
+    private List<TestUnit> newAnnotation(Class<?> junitTestClass) {
         List<TestUnit> result = new ArrayList<>();
-        RunWith annotation = junitTestClass.getAnnotation(RunWith.class);
-        if (annotation != null && Cucumber.class.isAssignableFrom(annotation.value())) {
-            RuntimeOptions runtimeOptions = new CucumberOptionsAnnotationParser().parse(junitTestClass).build();
-            ClassLoader classLoader = junitTestClass.getClassLoader();
-            ResourceLoader resourceLoader = new MultiLoader(classLoader);
-            ClassFinder classFinder = new ResourceLoaderClassFinder(resourceLoader, classLoader);
-            FeatureLoader featureLoader = new FeatureLoader(resourceLoader);
-            FeatureSupplier featureSupplier = new FeaturePathFeatureSupplier(featureLoader, runtimeOptions);
-            final List<CucumberFeature> cucumberFeatures = featureSupplier.get();
-            final Filters filters = new Filters(runtimeOptions);
-            EventBus eventBus = new TimeServiceEventBus(TimeService.SYSTEM);
-            BackendSupplier backendSupplier = new BackendModuleBackendSupplier(resourceLoader, classFinder, runtimeOptions);
-            RunnerSupplier runnerSupplier = new SingletonRunnerSupplier(runtimeOptions, eventBus, backendSupplier);
-            for (CucumberFeature feature : cucumberFeatures) {
-                Log.getLogger().fine("Found feature \"" + feature.getGherkinFeature().getFeature().getName() + "\"");
-                List<PickleEvent> pickles = feature.getPickles();
-                for (PickleEvent pickle : pickles) {
-                    if (!filters.matchesFilters(pickle)) continue;
-                    Description description = new Description(
-                        feature.getGherkinFeature().getFeature().getName() + " : " + pickle.pickle.getName(),
-                        junitTestClass);
-                    Log.getLogger().fine("Found \"" + description.getName() + "\"");
-                    result.add(new ScenarioTestUnit(description, pickle, runnerSupplier, eventBus));
-                }
+
+        RuntimeOptions runtimeOptions = new CucumberOptionsAnnotationParser()
+            .withOptionsProvider(new CustomProvider())
+            .parse(junitTestClass)
+            .build();
+
+        ClassLoader classLoader = junitTestClass.getClassLoader();
+        ResourceLoader resourceLoader = new MultiLoader(classLoader);
+        ClassFinder classFinder = new ResourceLoaderClassFinder(resourceLoader, classLoader);
+        FeatureLoader featureLoader = new FeatureLoader(resourceLoader);
+        FeatureSupplier featureSupplier = new FeaturePathFeatureSupplier(featureLoader, runtimeOptions);
+        final List<CucumberFeature> cucumberFeatures = featureSupplier.get();
+        final Filters filters = new Filters(runtimeOptions);
+        EventBus eventBus = new TimeServiceEventBus(TimeService.SYSTEM);
+        BackendSupplier backendSupplier = new BackendModuleBackendSupplier(resourceLoader, classFinder, runtimeOptions);
+        RunnerSupplier runnerSupplier = new SingletonRunnerSupplier(runtimeOptions, eventBus, backendSupplier);
+        for (CucumberFeature feature : cucumberFeatures) {
+            Log.getLogger().fine("Found feature \"" + feature.getGherkinFeature().getFeature().getName() + "\"");
+            List<PickleEvent> pickles = feature.getPickles();
+            for (PickleEvent pickle : pickles) {
+                if (!filters.matchesFilters(pickle)) continue;
+                Description description = new Description(
+                    feature.getGherkinFeature().getFeature().getName() + " : " + pickle.pickle.getName(),
+                    junitTestClass);
+                Log.getLogger().fine("Found \"" + description.getName() + "\"");
+                result.add(new ScenarioTestUnit(description, pickle, runnerSupplier, eventBus));
             }
         }
+
         return result;
+    }
+
+    private boolean hasACucumberAnnotation(Class<?> junitTestClass) {
+        RunWith annotation = junitTestClass.getAnnotation(RunWith.class);
+        return annotation != null && Cucumber.class.isAssignableFrom(annotation.value());
+    }
+
+    private boolean hasDeprecatedAnnotation(Class<?> junitTestClass) {
+        final cucumber.api.CucumberOptions annotation = junitTestClass.getAnnotation(cucumber.api.CucumberOptions.class);
+        return annotation != null;
+    }
+
+    private boolean hasNewAnnotation(Class<?> junitTestClass) {
+        final io.cucumber.junit.CucumberOptions annotation = junitTestClass.getAnnotation(io.cucumber.junit.CucumberOptions.class);
+        return annotation != null;
+    }
+
+    private List<TestUnit> deprecated(Class<?> junitTestClass) {
+        List<TestUnit> result = new ArrayList<>();
+
+        RuntimeOptions runtimeOptions = new CucumberOptionsAnnotationParser().parse(junitTestClass).build();
+        ClassLoader classLoader = junitTestClass.getClassLoader();
+        ResourceLoader resourceLoader = new MultiLoader(classLoader);
+        ClassFinder classFinder = new ResourceLoaderClassFinder(resourceLoader, classLoader);
+        FeatureLoader featureLoader = new FeatureLoader(resourceLoader);
+        FeatureSupplier featureSupplier = new FeaturePathFeatureSupplier(featureLoader, runtimeOptions);
+        final List<CucumberFeature> cucumberFeatures = featureSupplier.get();
+        final Filters filters = new Filters(runtimeOptions);
+        EventBus eventBus = new TimeServiceEventBus(TimeService.SYSTEM);
+        BackendSupplier backendSupplier = new BackendModuleBackendSupplier(resourceLoader, classFinder, runtimeOptions);
+        RunnerSupplier runnerSupplier = new SingletonRunnerSupplier(runtimeOptions, eventBus, backendSupplier);
+        for (CucumberFeature feature : cucumberFeatures) {
+            Log.getLogger().fine("Found feature \"" + feature.getGherkinFeature().getFeature().getName() + "\"");
+            List<PickleEvent> pickles = feature.getPickles();
+            for (PickleEvent pickle : pickles) {
+                if (!filters.matchesFilters(pickle)) continue;
+                Description description = new Description(
+                    feature.getGherkinFeature().getFeature().getName() + " : " + pickle.pickle.getName(),
+                    junitTestClass);
+                Log.getLogger().fine("Found \"" + description.getName() + "\"");
+                result.add(new ScenarioTestUnit(description, pickle, runnerSupplier, eventBus));
+            }
+        }
+
+        return result;
+    }
+
+    private class CustomProvider implements CucumberOptionsAnnotationParser.OptionsProvider {
+        @Override
+        public CucumberOptionsAnnotationParser.CucumberOptions getOptions(Class<?> clazz) {
+            final io.cucumber.junit.CucumberOptions annotation = clazz.getAnnotation(io.cucumber.junit.CucumberOptions.class);
+            if (annotation == null) {
+                return null;
+            }
+            return new CustomCucumberOptions(annotation);
+        }
+    }
+
+    private class CustomCucumberOptions implements CucumberOptionsAnnotationParser.CucumberOptions {
+        private final CucumberOptions annotation;
+
+        public CustomCucumberOptions(CucumberOptions annotation) {
+            this.annotation = annotation;
+        }
+
+        @Override
+        public boolean dryRun() {
+            return annotation.dryRun();
+        }
+
+        @Override
+        public boolean strict() {
+            return annotation.strict();
+        }
+
+        @Override
+        public String[] features() {
+            return annotation.features();
+        }
+
+        @Override
+        public String[] glue() {
+            return annotation.glue();
+        }
+
+        @Override
+        public String[] extraGlue() {
+            return annotation.extraGlue();
+        }
+
+        @Override
+        public String[] tags() {
+            return annotation.tags();
+        }
+
+        @Override
+        public String[] plugin() {
+            return annotation.plugin();
+        }
+
+        @Override
+        public boolean monochrome() {
+            return annotation.monochrome();
+        }
+
+        @Override
+        public String[] name() {
+            return annotation.name();
+        }
+
+        @Override
+        public SnippetType snippets() {
+            CucumberOptions.SnippetType snippets = annotation.snippets();
+            return SnippetType.fromString(snippets.name());
+        }
+
+        @Override
+        public String[] junit() {
+            return annotation.junit();
+        }
     }
 }
